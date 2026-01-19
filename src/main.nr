@@ -53,109 +53,10 @@ use poseidon::poseidon2::Poseidon2::hash as poseidon2;
     };
 use mpclib::selective_disclosure::selective_disclosure::{RoundState, UserOutputState};
 
-use mpclib::selective_disclosure::selective_disclosure::Serialize as Serialize1;
-use mpclib::selective_disclosure::selective_disclosure::Deserialize as Deserialize1;
     use aztec::macros::internals_functions_generation::abi_attributes::abi_utility;
 use dep::aztec::oracle::debug_log::{ debug_log, debug_log_format };
 
-    pub struct _GameState {
-        state: GameState
-    }
-
-    impl Serialize for _GameState {
-        let N: u32 = 1033;
-
-        fn serialize(self) -> [Field; 1033] {
-            let mpc_array = self.state.mpc_state.serialize();
-            let mut result: [Field; 1033] = [0; 1033];
-            for i in 0..1031 {
-                result[i] = mpc_array[i];
-            }
-            result[1031] = self.state.move_count;
-            result[1032] = self.state.game_ended as Field;
-            result
-        }
-    }
-
-    impl Deserialize for _GameState {
-        let N: u32 = 1033;
-
-        fn deserialize(input: [Field; 1033]) -> Self {
-            let mut mpc_array: [Field; 1031] = [0; 1031];
-            for i in 0..1031 {
-                mpc_array[i] = input[i];
-            }
-            let mpc_state = RoundMpcState::deserialize(mpc_array);
-
-            let mut result: _GameState = _GameState{
-                state: GameState{
-                    game_ended: input[1032] == 1,
-                    move_count: input[1031],
-                    mpc_state: mpc_state,
-                }
-            };
-            result
-        }
-    }
-
-
-pub struct _UserState {
-    state: UserState
-}
-
-
-impl Serialize for _UserState {
-    let N: u32 = 130;
-
-    fn serialize(self) -> [Field; Self::N] {
-        let mut result: [Field; 130] = self.state.encode();
-        result
-    }
-}
-
-impl Deserialize for _UserState {
-    let N: u32 = 130;
-
-    fn deserialize(input: [Field; Self::N]) -> Self {
-        let mut state = UserState::decode(input);
-        let result: _UserState = _UserState{ state };
-        result
-    }
-}
-
-impl Packable for _UserState {
-    let N: u32 = 130;
-
-    fn pack(self) -> [Field; Self::N] {
-        self.serialize()
-    }
-
-
-    fn unpack(input: [Field; Self::N]) -> Self {
-        _UserState::deserialize(input)
-    }
-}
-pub struct _MoveData {
-    state: MoveData
-}
-
-impl Serialize for _MoveData {
-    let N: u32 = 4;
-
-    fn serialize(self) -> [Field; Self::N] {
-        let mut result: [Field; 4] = [self.state.x1, self.state.y1, self.state.x2, self.state.y2];
-        result
-    }
-}
-
-impl Deserialize for _MoveData {
-    let N: u32 = 4;
-
-    fn deserialize(input: [Field; Self::N]) -> Self {
-        let result: _MoveData = _MoveData{ state: MoveData{ x1: input[0], y1: input[1], x2: input[2], y2: input[3]}};
-        result
-    }
-}
+   
 /*
 GameState
     pub game_ended: bool,
@@ -201,65 +102,64 @@ struct Storage<Context> {
 
 
 #[external("utility")]
-unconstrained fn __empty_game_state() -> _GameState {
-    _GameState{ state: GameState::default() }
+unconstrained fn __empty_game_state() -> GameState {
+    GameState::default()
 }
 
 #[external("utility")]
-unconstrained fn __empty_white_state() -> _UserState {
+unconstrained fn __empty_white_state() -> UserState {
     let u = UserState::default();
-    _UserState{ state: u.initialize(0) }
+    u.initialize(0)
 }
 
 #[external("utility")]
-unconstrained fn __empty_black_state() -> _UserState {
+unconstrained fn __empty_black_state() -> UserState {
     let u = UserState::default();
-    _UserState{ state: u.initialize(1) }
+    u.initialize(1)
 }
 
 #[external("utility")]
 unconstrained fn __commit_to_user_secrets(
-    game_state: _GameState,
+    game_state: GameState,
     encrypt_secret: Field,
     mask_secret: Field,
     player_id: Field,
-) -> _GameState {
-    let mut updated = game_state.state;
+) -> GameState {
+    let mut updated = game_state;
 
     let secret_hashes = [poseidon2([encrypt_secret, -1], 2), poseidon2([mask_secret, -1], 2)];
 player_id.assert_max_bit_size::<32>();
 let id = player_id as u32;
     updated.mpc_state.user_encrypt_secret_hashes[id] = secret_hashes[0];
     updated.mpc_state.user_mask_secret_hashes[id] = secret_hashes[1];
-    _GameState{ state: updated }
+    updated
 }
 
 
 #[external("utility")]
-unconstrained fn __create_move(x1: Field, y1: Field, x2: Field, y2: Field) -> _MoveData {
-    _MoveData{ state: MoveData { x1, y1, x2, y2 } }
+unconstrained fn __create_move(x1: Field, y1: Field, x2: Field, y2: Field) -> MoveData {
+    MoveData { x1, y1, x2, y2 }
 }
 
 
 #[external("utility")]
 unconstrained fn __consume_opponent_move_and_update_game_state(
-    input_state: _GameState,
-    user_state: _UserState,
+    input_state: GameState,
+    user_state: UserState,
     player_id: Field,
-) -> pub _UserState {
-    _UserState{ state: consume_opponent_move_and_update_game_state_inner(input_state.state, user_state.state, player_id) }
+) -> UserState {
+    consume_opponent_move_and_update_game_state_inner(input_state, user_state, player_id)
 }
 
 
 #[external("utility")]
 unconstrained fn update_user_state_from_move(
     is_first_two_moves: bool,
-    _user_state: _UserState,
-    _move_data: _MoveData,
+    _user_state: UserState,
+    move_data: MoveData,
     player_id: Field,
-) -> (_UserState) {
-    let mut user_state = _user_state.state;
-    let move_data = _move_data.state;
+) -> UserState {
+    let mut user_state = _user_state;
     if (is_first_two_moves) {
         user_state = UserState::initialize(user_state, player_id);
     }
@@ -282,7 +182,7 @@ unconstrained fn update_user_state_from_move(
         ending_piece_data,
         player_id,
     );
-    _UserState{ state: user_state }
+    user_state
 }
 
 // #[external("private")]
@@ -379,25 +279,22 @@ fn create_game_public(user_secret_hashes: [Field; 2], password_hash: Field) {
 
 
 #[external("private")]
-fn args_hash_err(_user_state: _UserState) {
-    assert(_user_state.state.encrypt_secret != 12345);
+fn args_hash_err(user_state: UserState) {
+    assert(user_state.encrypt_secret != 12345);
 }
 
 
 #[external("private")]
-fn make_move_white_private(game_id: u32,game_state: _GameState,_user_state: _UserState,_move_data: _MoveData) {
+fn make_move_white_private(game_id: u32,game_state: GameState,user_state: UserState,move_data: MoveData) {
 
-    let user_state = _user_state.state;
-    let move_data = _move_data.state;
     // let old_round_game_state: RoundMpcState = RoundMpcState::deserialize(serialized_game_state);
 
-    let old_game_state: GameState = game_state.state;
     // let old_game_state = GameState{
     //     game_ended: false,
     //     move_count: move_count, // ???
     //     mpc_state: old_round_game_state
     // };
-    let state_hash = old_game_state.hash();
+    let state_hash = game_state.hash();
 
 
 // debug_log_format("user encrypt secret hashes: {0}, {1}", [old_game_state.mpc_state.user_encrypt_secret_hashes[0], old_game_state.mpc_state.user_encrypt_secret_hashes[1]]);
