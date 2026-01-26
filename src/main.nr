@@ -34,7 +34,7 @@ fn pack_game_state(state: GameState) -> Field {
 #[aztec]
 pub contract BobToken {
     use aztec::{
-        macros::{functions::{external, initializer, only_self}, storage::storage},
+        macros::{functions::{external, initializer, only_self}, storage::storage, events::event},
         messages::message_delivery::MessageDelivery,
         protocol_types::address::AztecAddress,
         state_vars::{Map, Owned},
@@ -86,6 +86,13 @@ pub struct Ciphertext<let N: u32> {
     data: [Field; N * 2],
 }
 */
+
+
+#[event]
+struct MoveEvent {
+    state: UserOutputState<64, 2>
+}
+
 #[storage]
 struct Storage<Context> {
     game_counter: PublicMutable<u32, Context>,
@@ -296,25 +303,31 @@ fn make_move_white_private(game_id: u32,game_state: GameState,user_state: UserSt
     // };
     let state_hash = game_state.hash();
 
+    debug_log_format("input game state secret/mask hashes: {0}, {1}, {2}, {3}", [
+        game_state.mpc_state.user_encrypt_secret_hashes[0], 
+        game_state.mpc_state.user_encrypt_secret_hashes[1],
+    game_state.mpc_state.user_mask_secret_hashes[0],
+    game_state.mpc_state.user_mask_secret_hashes[1]]);
+    debug_log_format("state hash: {0}, {1}, {2}, {3}", [state_hash]);
 
 // debug_log_format("user encrypt secret hashes: {0}, {1}", [old_game_state.mpc_state.user_encrypt_secret_hashes[0], old_game_state.mpc_state.user_encrypt_secret_hashes[1]]);
 // debug_log_format("user mask secret hashes: {0}, {1}", [old_game_state.mpc_state.user_mask_secret_hashes[0], old_game_state.mpc_state.user_mask_secret_hashes[1]]);
 
-//     let foo = poseidon2([user_state.encrypt_secret, -1], 2);
-//     let bar = poseidon2([user_state.mask_secret, -1], 2);
-// debug_log_format("reconstructed secret/mask hashes: {0}, {1}", [foo, bar]);
+    // let foo = poseidon2([user_state.encrypt_secret, -1], 2);
+    // let bar = poseidon2([user_state.mask_secret, -1], 2);
+    // debug_log_format("reconstructed secret/mask hashes: {0}, {1}", [foo, bar]);
 
-    // let move_result = move_for_contract::<0>(state_hash, old_game_state, user_state, move_data);
-    // let user_output_state = move_result.0;
-    // let move_hashes = move_result.1;
+    let move_result = move_for_contract::<0>(state_hash, game_state, user_state, move_data);
+    let user_output_state = move_result.0;
+    let move_hashes = move_result.1;
 
 
-    // let starting_hash: Field = move_hashes.input_game_state;
-    // let ending_hash = move_hashes.output_game_state;
+    let starting_hash: Field = move_hashes.input_game_state;
+    let ending_hash = move_hashes.output_game_state;
 
-  //  let broadcast_output_state: [Field; 385] = user_output_state.serialize();
+//  let broadcast_output_state: [Field; 512] = user_output_state.serialize();
 
-   // self.enqueue_self.make_move_white_public(game_id, state_hash, 0);//, broadcast_output_state);
+   self.enqueue_self.make_move_white_public(game_id, state_hash, ending_hash,user_output_state);
 
    // let new_game_hash = 
     // // ok so we need a few things
@@ -336,37 +349,63 @@ fn make_move_white_private(game_id: u32,game_state: GameState,user_state: UserSt
 fn make_move_white_public(
     game_id: u32,
     initial_hash: Field,
-    final_hash: Field//,
-    // serialized_user_data: [Field; 385]
+    final_hash: Field,
+    state: UserOutputState<64, 2>
 ) {
 
-    let game_hash = self.storage.game_hashes.at(game_id).read();
+     let game_hash = self.storage.game_hashes.at(game_id).read();
 
-    assert(game_hash == initial_hash);
+     assert(initial_hash != final_hash);
     assert(game_hash != 0);
+    assert(game_hash == initial_hash);
 
     self.storage.game_hashes.at(game_id).write(final_hash);
-    // self.context.emit_public_log(serialized_user_data);
+    self.emit(MoveEvent{ state });
+ //    self.context.emit_public_log(serialized_user_data);
     // 1. load up game
     // 2. check hashes match
     // 3. update
     // 4. emit event
 }
 
+#[external("private")]
+fn test_user_output_state(
+    state: UserOutputState<64, 2>
+) {
+
+
+    assert(state.hash() != 0);
+ //    self.context.emit_public_log(serialized_user_data);
+    // 1. load up game
+    // 2. check hashes match
+    // 3. update
+    // 4. emit event
+}
 
 #[external("private")]
-fn join_game_private(game_id: u32, user_secret: Field, user_mask: Field, password: Field) {
+fn join_game_private(game_id: u32, user_secret: Field, user_mask: Field, white_secret_hashes: [Field; 2], password: Field) {
 
     
     let mut game_state: GameState = empty_game_state();
     // Field; 1031
-    game_state = game_state.commit_to_user_secrets(user_secret, user_mask, 0);
+
+    game_state = game_state.commit_to_user_secrets(user_secret, user_mask, 1);
+   game_state.mpc_state.user_encrypt_secret_hashes[0] = white_secret_hashes[0];
+   game_state.mpc_state.user_mask_secret_hashes[0] = white_secret_hashes[1];
     let mut password_hash = poseidon2([password], 1);
     if (password == 0)
     {
         password_hash = 0;
     }
   let game_hash = game_state.hash();
+    debug_log_format("black user secret/mask: {0}, {1}", [user_secret, user_mask]);
+    debug_log_format("input game state secret/mask hashes: {0}, {1}, {2}, {3}", [
+        game_state.mpc_state.user_encrypt_secret_hashes[0], 
+        game_state.mpc_state.user_encrypt_secret_hashes[1],
+    game_state.mpc_state.user_mask_secret_hashes[0],
+    game_state.mpc_state.user_mask_secret_hashes[1]]);
+    debug_log_format("state hash: {0}, {1}, {2}, {3}", [game_hash]);
+
     self.enqueue_self.join_game_public(game_id, game_hash, [game_state.mpc_state.user_encrypt_secret_hashes[0], game_state.mpc_state.user_mask_secret_hashes[0]], password_hash);
   //  commit_to_user_secrets
 }

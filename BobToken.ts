@@ -9,10 +9,14 @@ import { EthAddress } from '@aztec/aztec.js/addresses';
 import { Fr, Point } from '@aztec/aztec.js/fields';
 import { type PublicKey, PublicKeys } from '@aztec/aztec.js/keys';
 import type { Wallet } from '@aztec/aztec.js/wallet';
-import BobTokenContractArtifactJson from '../target/bob_token_contract-BobToken.json' with { type: 'json' };
+import BobTokenContractArtifactJson from 'target/bob_token_contract-BobToken.json' with { type: 'json' };
 export const BobTokenContractArtifact = loadContractArtifact(BobTokenContractArtifactJson as NoirCompiledContract);
 
 
+      export type MoveEvent = {
+        state: { ciphertext: { data: FieldLike[] }, mask_commitments: { x: FieldLike, y: FieldLike, is_infinite: boolean }[], user_updated_mask_commitments: { x: FieldLike, y: FieldLike, is_infinite: boolean }[][] }
+      }
+    
 
 /**
  * Type-safe interface for contract BobToken;
@@ -177,6 +181,9 @@ private_balances: {
     /** sync_private_state() */
     sync_private_state: (() => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
+    /** test_user_output_state(state: struct) */
+    test_user_output_state: ((state: { ciphertext: { data: FieldLike[] }, mask_commitments: { x: FieldLike, y: FieldLike, is_infinite: boolean }[], user_updated_mask_commitments: { x: FieldLike, y: FieldLike, is_infinite: boolean }[][] }) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
+
     /** transfer_ownership(new_owner: struct) */
     transfer_ownership: ((new_owner: AztecAddressLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
 
@@ -190,5 +197,114 @@ private_balances: {
     update_user_state_from_move: ((is_first_two_moves: boolean, _user_state: { encrypt_secret: FieldLike, mask_secret: FieldLike, visible_squares: FieldLike[], game_state: { id: FieldLike, player_id: FieldLike, has_moved: FieldLike }[] }, move_data: { x1: FieldLike, y1: FieldLike, x2: FieldLike, y2: FieldLike }, player_id: FieldLike) => ContractFunctionInteraction) & Pick<ContractMethod, 'selector'>;
   };
 
+  
+    public static get events(): { MoveEvent: {abiType: AbiType, eventSelector: EventSelector, fieldNames: string[] } } {
+    return {
+      MoveEvent: {
+        abiType: {
+    "kind": "struct",
+    "fields": [
+        {
+            "name": "state",
+            "type": {
+                "kind": "struct",
+                "fields": [
+                    {
+                        "name": "ciphertext",
+                        "type": {
+                            "kind": "struct",
+                            "fields": [
+                                {
+                                    "name": "data",
+                                    "type": {
+                                        "kind": "array",
+                                        "length": 128,
+                                        "type": {
+                                            "kind": "field"
+                                        }
+                                    }
+                                }
+                            ],
+                            "path": "mpclib::common::crypto::Ciphertext"
+                        }
+                    },
+                    {
+                        "name": "mask_commitments",
+                        "type": {
+                            "kind": "array",
+                            "length": 64,
+                            "type": {
+                                "kind": "struct",
+                                "fields": [
+                                    {
+                                        "name": "x",
+                                        "type": {
+                                            "kind": "field"
+                                        }
+                                    },
+                                    {
+                                        "name": "y",
+                                        "type": {
+                                            "kind": "field"
+                                        }
+                                    },
+                                    {
+                                        "name": "is_infinite",
+                                        "type": {
+                                            "kind": "boolean"
+                                        }
+                                    }
+                                ],
+                                "path": "std::embedded_curve_ops::EmbeddedCurvePoint"
+                            }
+                        }
+                    },
+                    {
+                        "name": "user_updated_mask_commitments",
+                        "type": {
+                            "kind": "array",
+                            "length": 1,
+                            "type": {
+                                "kind": "array",
+                                "length": 64,
+                                "type": {
+                                    "kind": "struct",
+                                    "fields": [
+                                        {
+                                            "name": "x",
+                                            "type": {
+                                                "kind": "field"
+                                            }
+                                        },
+                                        {
+                                            "name": "y",
+                                            "type": {
+                                                "kind": "field"
+                                            }
+                                        },
+                                        {
+                                            "name": "is_infinite",
+                                            "type": {
+                                                "kind": "boolean"
+                                            }
+                                        }
+                                    ],
+                                    "path": "std::embedded_curve_ops::EmbeddedCurvePoint"
+                                }
+                            }
+                        }
+                    }
+                ],
+                "path": "mpclib::selective_disclosure::selective_disclosure::UserOutputState"
+            }
+        }
+    ],
+    "path": "BobToken::MoveEvent"
+},
+        eventSelector: EventSelector.fromString("0xe983606e"),
+        fieldNames: ["state"],
+      }
+    };
+  }
   
 }

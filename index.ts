@@ -1,9 +1,11 @@
-import { BobTokenContract } from "./artifacts/BobToken.js";
+import {  type MoveEvent, BobTokenContract } from "./artifacts/BobToken.js";
 import { AztecAddress } from "@aztec/aztec.js/addresses";
 import { createAztecNodeClient } from "@aztec/aztec.js/node";
 import { getInitialTestAccountsData } from "@aztec/accounts/testing";
 import { TestWallet } from "@aztec/test-wallet/server";
 import { openTmpStore } from "@aztec/kv-store/lmdb";
+import { getDecodedPublicEvents } from "@aztec/aztec.js/events";
+
 
 // export async function initGameState() {
 //   try {
@@ -111,11 +113,11 @@ async function main() {
     .simulate({ from: giggleAddress });
   console.log("white state ", whiteState);
 
-  console.log("about to call method that errors?");
-  await bobToken.methods
-    .args_hash_err(whiteState)
-    .send({ from: giggleAddress })
-    .wait();
+//   console.log("about to call method that errors?");
+//   await bobToken.methods
+//     .args_hash_err(whiteState)
+//     .send({ from: giggleAddress })
+//     .wait();
 
   console.log("creating game state");
   let gameState = await bobToken.methods
@@ -148,6 +150,9 @@ async function main() {
     )
     .simulate({ from: giggleAddress });
   console.log("commit to black secrets");
+
+  console.log("GAME STATE WHITE SECRET HASH = ", gameState.mpc_state.user_encrypt_secret_hashes[0].toString(16));
+  console.log("GAME STATE WHITE MASK HASH = " , gameState.mpc_state.user_mask_secret_hashes[0].toString(16));
   gameState = await bobToken.methods
     .__commit_to_user_secrets(
       gameState,
@@ -156,6 +161,10 @@ async function main() {
       1, // 1 = black
     )
     .simulate({ from: giggleAddress });
+  console.log("GAME STATE 2 WHITE SECRET HASH = ", gameState.mpc_state.user_encrypt_secret_hashes[0].toString(16));
+  console.log("GAME STATE 2 WHITE MASK HASH = " , gameState.mpc_state.user_mask_secret_hashes[0].toString(16));
+  console.log("GAME STATE BLACK SECRET HASH = ", gameState.mpc_state.user_encrypt_secret_hashes[1].toString(16));
+  console.log("GAME STATE BLACK MASK HASH = " , gameState.mpc_state.user_mask_secret_hashes[1].toString(16));
 
   // at this point we sort of have an initial state we can play with?
   console.log("game state? ", gameState);
@@ -177,64 +186,107 @@ async function main() {
   console.log("new user state = ", new_user_state);
 
   await bobToken.methods
-    .create_game_private(1, 2, 3)
+    .create_game_private(whiteState.encrypt_secret, whiteState.mask_secret, 3)
     .send({ from: giggleAddress })
     .wait();
 
   await bobToken.methods
-    .join_game_private(0, 4, 5, 3)
+    .join_game_private(0, blackState.encrypt_secret, blackState.mask_secret, [gameState.mpc_state.user_encrypt_secret_hashes[0], gameState.mpc_state.user_mask_secret_hashes[0]], 3)
     .send({ from: aliceAddress })
     .wait();
+
+      console.log("about to call method that errors?");
+  let receipt = await bobToken.methods
+    .make_move_white_private(0, gameState, whiteState, move)
+    .send({ from: giggleAddress })
+    .wait();
+
+
+// OK next question. Can I convert this event data into a struct? can I just emit the struct?
+    console.log("fee = ", receipt.transactionFee);
+//   let receipt = await bobToken.methods
+//     .make_move_white_private(0, gameState, whiteState, move)
+//     .profile()
+//     .send({ from: giggleAddress })
+//     .wait();
 
   //         const logs = await aztecNode.getPublicLogs({ txHash: receipt.txHash });
   // const rawFields = logs.logs[0].log.getEmittedFields(); // Fr[]
-  console.log(" move hash?");
-  await bobToken.methods
-    .mint_public(aliceAddress, 100n)
-    .send({ from: giggleAddress })
-    .wait();
+  console.log(" move hash?", receipt.txHash);
+//   await bobToken.methods
+//     .mint_public(aliceAddress, 100n)
+//     .send({ from: giggleAddress })
+//     .wait();
 
-  await bobToken.methods
-    .transfer_public(bobClinicAddress, 10n)
-    .send({ from: aliceAddress })
-    .wait();
+const logs = await node.getPublicLogs({ txHash: receipt.txHash });
+const rawFields = logs.logs[0].log.getEmittedFields(); // Fr[]
 
-  // ...etc
-  await bobToken.methods
-    .mint_public(aliceAddress, 100n)
-    .send({ from: giggleAddress })
-    .wait();
-  await getBalances(bobToken, aliceAddress, bobClinicAddress);
+console.log("log? ", logs.logs[0].log.toHumanReadable());
+console.log("raw log? ", rawFields);
+  receipt.blockNumber;
+const collectedEvent0s = await getDecodedPublicEvents<MoveEvent>(
+  node,
+  BobTokenContract.events.MoveEvent,
+  receipt.blockNumber!,
+  receipt.blockNumber! + 1,
+);
 
-  await bobToken.methods
-    .transfer_public(bobClinicAddress, 10n)
-    .send({ from: aliceAddress })
-    .wait();
-  await getBalances(bobToken, aliceAddress, bobClinicAddress);
+//   let foo = await bobToken.methods
+//     .test_user_output_state(logs.logs[0].log);
+//     .send({ from: giggleAddress })
+//     .wait();
 
-  await bobToken.methods
-    .public_to_private(90n)
-    .send({ from: aliceAddress })
-    .wait();
-  await getBalances(bobToken, aliceAddress, bobClinicAddress);
 
-  await bobToken.methods
-    .transfer_private(bobClinicAddress, 50n)
-    .send({ from: aliceAddress })
-    .wait();
-  await getBalances(bobToken, aliceAddress, bobClinicAddress);
+// Get logs for a block range
+// const logFilter = {
+//   fromBlock: startBlock,
+//   toBlock: endBlock,
+// };
+// const publicLogs = (await aztecNode.getPublicLogs(logFilter)).logs;
 
-  await bobToken.methods
-    .private_to_public(10n)
-    .send({ from: aliceAddress })
-    .wait();
-  await getBalances(bobToken, aliceAddress, bobClinicAddress);
 
-  await bobToken.methods
-    .mint_private(aliceAddress, 100n)
-    .send({ from: giggleAddress })
-    .wait();
-  await getBalances(bobToken, aliceAddress, bobClinicAddress);
+
+//   await bobToken.methods
+//     .transfer_public(bobClinicAddress, 10n)
+//     .send({ from: aliceAddress })
+//     .wait();
+
+//   // ...etc
+//   await bobToken.methods
+//     .mint_public(aliceAddress, 100n)
+//     .send({ from: giggleAddress })
+//     .wait();
+//   await getBalances(bobToken, aliceAddress, bobClinicAddress);
+
+//   await bobToken.methods
+//     .transfer_public(bobClinicAddress, 10n)
+//     .send({ from: aliceAddress })
+//     .wait();
+//   await getBalances(bobToken, aliceAddress, bobClinicAddress);
+
+//   await bobToken.methods
+//     .public_to_private(90n)
+//     .send({ from: aliceAddress })
+//     .wait();
+//   await getBalances(bobToken, aliceAddress, bobClinicAddress);
+
+//   await bobToken.methods
+//     .transfer_private(bobClinicAddress, 50n)
+//     .send({ from: aliceAddress })
+//     .wait();
+//   await getBalances(bobToken, aliceAddress, bobClinicAddress);
+
+//   await bobToken.methods
+//     .private_to_public(10n)
+//     .send({ from: aliceAddress })
+//     .wait();
+//   await getBalances(bobToken, aliceAddress, bobClinicAddress);
+
+//   await bobToken.methods
+//     .mint_private(aliceAddress, 100n)
+//     .send({ from: giggleAddress })
+//     .wait();
+// await getBalances(bobToken, aliceAddress, bobClinicAddress);
 }
 
 main().catch(console.error);
