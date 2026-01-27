@@ -1,5 +1,5 @@
 [package]
-name = "bob_token_contract"
+name = "fog_of_war_chess"
 type = "contract"
 authors = [""]
 

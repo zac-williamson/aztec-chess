@@ -1,6 +1,14 @@
 {
   "bob_token_contract-BobToken.json": {
     "contractName": "BobToken",
-    "hash": "86e13e66021c3f487b5a4666a047313645ea2d4e85a27ba548664ee913744777"
+    "hash": "55aec67a8ee39a1a9727848853757465d61fe67fc196b12babe86d649eb988c8"
+  },
+  "bob_token_contract-BobTokenddd.json": {
+    "contractName": "BobToken",
+    "hash": "50a4295f6577813b02e534e62a98e75388a3df9445bcc944e4a34ee8aa8ebe14"
+  },
+  "fog_of_war_chess-FogOfWarChess.json": {
+    "contractName": "FogOfWarChess",
+    "hash": "282fedc2ba800c326751801c90bd7bf0af644c3847a864bfdf2369a479c00be6"
   }
 }
