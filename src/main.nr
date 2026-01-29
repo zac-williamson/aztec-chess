@@ -30,6 +30,15 @@ pub contract FogOfWarChess {
         initial_state: [Field; 2],
     }
 
+
+    /// Used to identify new games client-side
+    #[event]
+    struct JoinedGame {
+        game_id: u32,
+        password_hash: Field,
+        initial_state: [Field; 2],
+    }
+
     #[storage]
     struct Storage<Context> {
         game_counter: PublicMutable<u32, Context>,
@@ -299,5 +308,7 @@ pub contract FogOfWarChess {
         ]);
 
         self.storage.game_hashes.at(game_id).write(game_hash);
+        self.emit(JoinedGame { game_id, password_hash, initial_state: user_secret_hashes });
+
     }
 }

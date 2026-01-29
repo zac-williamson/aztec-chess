@@ -25,6 +25,13 @@ initial_state: FieldLike[]
       }
     
 
+      export type JoinedGame = {
+        game_id: (bigint | number)
+password_hash: FieldLike
+initial_state: FieldLike[]
+      }
+    
+
 /**
  * Type-safe interface for contract FogOfWarChess;
  */
@@ -169,7 +176,7 @@ game_hashes: {
   };
 
   
-    public static get events(): { NewGame: {abiType: AbiType, eventSelector: EventSelector, fieldNames: string[] }, MoveEvent: {abiType: AbiType, eventSelector: EventSelector, fieldNames: string[] } } {
+    public static get events(): { NewGame: {abiType: AbiType, eventSelector: EventSelector, fieldNames: string[] }, MoveEvent: {abiType: AbiType, eventSelector: EventSelector, fieldNames: string[] }, JoinedGame: {abiType: AbiType, eventSelector: EventSelector, fieldNames: string[] } } {
     return {
       NewGame: {
         abiType: {
@@ -308,6 +315,40 @@ MoveEvent: {
 },
         eventSelector: EventSelector.fromString("0xe983606e"),
         fieldNames: ["state"],
+      },
+JoinedGame: {
+        abiType: {
+    "kind": "struct",
+    "fields": [
+        {
+            "name": "game_id",
+            "type": {
+                "kind": "integer",
+                "sign": "unsigned",
+                "width": 32
+            }
+        },
+        {
+            "name": "password_hash",
+            "type": {
+                "kind": "field"
+            }
+        },
+        {
+            "name": "initial_state",
+            "type": {
+                "kind": "array",
+                "length": 2,
+                "type": {
+                    "kind": "field"
+                }
+            }
+        }
+    ],
+    "path": "FogOfWarChess::JoinedGame"
+},
+        eventSelector: EventSelector.fromString("0x49999138"),
+        fieldNames: ["game_id","password_hash","initial_state"],
       }
     };
   }
