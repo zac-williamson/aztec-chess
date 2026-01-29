@@ -284,8 +284,8 @@ pub contract FogOfWarChess {
             game_id,
             game_hash,
             [
-                game_state.mpc_state.user_encrypt_secret_hashes[0],
-                game_state.mpc_state.user_mask_secret_hashes[0],
+                game_state.mpc_state.user_encrypt_secret_hashes[1],
+                game_state.mpc_state.user_mask_secret_hashes[1],
             ],
             password_hash,
         );
