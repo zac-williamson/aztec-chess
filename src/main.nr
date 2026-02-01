@@ -4,6 +4,7 @@ use aztec::macros::aztec;
 pub contract FogOfWarChess {
     use aztec::{
         macros::{events::event, functions::{external, initializer, only_self}, storage::storage},
+        protocol_types::address::AztecAddress,
         state_vars::{Map, public_mutable::PublicMutable},
     };
     use fog_of_war_chess::{
@@ -44,7 +45,15 @@ pub contract FogOfWarChess {
         game_counter: PublicMutable<u32, Context>,
         game_secret_hashes: Map<u32, PublicMutable<[Field; 4], Context>, Context>,
         game_hashes: Map<u32, PublicMutable<Field, Context>, Context>,
+        // ELO rating system
+        elo_ratings: Map<AztecAddress, PublicMutable<u32, Context>, Context>,
+        game_players: Map<u32, PublicMutable<[AztecAddress; 2], Context>, Context>,
     }
+
+    /// Default ELO rating for new players
+    global DEFAULT_ELO: u32 = 1200;
+    /// K-factor for ELO calculations (determines rating volatility)
+    global ELO_K_FACTOR: u32 = 32;
 
     #[external("utility")]
     unconstrained fn __empty_game_state() -> GameState {
@@ -144,6 +153,21 @@ pub contract FogOfWarChess {
         self.storage.game_secret_hashes.at(game_id).read()
     }
 
+    #[external("utility")]
+    unconstrained fn __get_elo_rating(player: AztecAddress) -> u32 {
+        let rating = self.storage.elo_ratings.at(player).read();
+        if rating == 0 {
+            DEFAULT_ELO
+        } else {
+            rating
+        }
+    }
+
+    #[external("utility")]
+    unconstrained fn __get_game_players(game_id: u32) -> [AztecAddress; 2] {
+        self.storage.game_players.at(game_id).read()
+    }
+
     #[initializer]
     #[external("public")]
     fn setup() {}
@@ -156,18 +180,20 @@ pub contract FogOfWarChess {
         if (password == 0) {
             password_hash = 0;
         }
+        let white_player = self.context.msg_sender().unwrap();
         self.enqueue_self.create_game_public(
             [
                 game_state.mpc_state.user_encrypt_secret_hashes[0],
                 game_state.mpc_state.user_mask_secret_hashes[0],
             ],
             password_hash,
+            white_player,
         );
     }
 
     #[external("public")]
     #[only_self]
-    fn create_game_public(user_secret_hashes: [Field; 2], password_hash: Field) {
+    fn create_game_public(user_secret_hashes: [Field; 2], password_hash: Field, white_player: AztecAddress) {
         let game_id: u32 = self.storage.game_counter.read();
         self.storage.game_hashes.at(game_id).write(0);
         self.storage.game_secret_hashes.at(game_id).write([
@@ -176,6 +202,8 @@ pub contract FogOfWarChess {
             password_hash,
             0,
         ]);
+        // Store white player address (black player will be added when they join)
+        self.storage.game_players.at(game_id).write([white_player, AztecAddress::zero()]);
         self.storage.game_counter.write(game_id + 1);
 
         self.emit(NewGame { game_id, password_hash, initial_state: user_secret_hashes });
@@ -196,11 +224,16 @@ pub contract FogOfWarChess {
 
         let ending_hash = move_hashes.output_game_state;
 
+        // Check if white captured black's king (game ends)
+        let target_piece = user_state.game_state[(move_data.x2 + move_data.y2 * 8) as u32];
+        let game_ended = (target_piece.id == Pieces::KING) & (target_piece.player_id == 1);
+
         self.enqueue_self.make_move_white_public(
             game_id,
             state_hash,
             ending_hash,
             user_output_state,
+            game_ended,
         );
     }
 
@@ -211,6 +244,7 @@ pub contract FogOfWarChess {
         initial_hash: Field,
         final_hash: Field,
         state: UserOutputState<64, 2>,
+        game_ended: bool,
     ) {
         let game_hash = self.storage.game_hashes.at(game_id).read();
 
@@ -220,6 +254,46 @@ pub contract FogOfWarChess {
 
         self.storage.game_hashes.at(game_id).write(final_hash);
         self.emit(MoveEvent { state });
+
+        // If white won (captured black's king), update ELO ratings
+        if game_ended {
+            let players: [AztecAddress; 2] = self.storage.game_players.at(game_id).read();
+            let winner = players[0]; // white won
+            let loser = players[1];  // black lost
+
+            // Get current ratings (use default if not set)
+            let mut winner_rating = self.storage.elo_ratings.at(winner).read();
+            let mut loser_rating = self.storage.elo_ratings.at(loser).read();
+            if winner_rating == 0 {
+                winner_rating = DEFAULT_ELO;
+            }
+            if loser_rating == 0 {
+                loser_rating = DEFAULT_ELO;
+            }
+
+            // Calculate rating change using simplified ELO
+            let rating_diff: i32 = loser_rating as i32 - winner_rating as i32;
+            let mut expected_x100: i32 = 50 + rating_diff / 8;
+            if expected_x100 < 5 {
+                expected_x100 = 5;
+            }
+            if expected_x100 > 95 {
+                expected_x100 = 95;
+            }
+            let rating_change: u32 = (ELO_K_FACTOR * (100 - expected_x100 as u32)) / 100;
+
+            // Update ratings
+            let new_winner_rating = winner_rating + rating_change;
+            let mut new_loser_rating = loser_rating;
+            if loser_rating > rating_change {
+                new_loser_rating = loser_rating - rating_change;
+            } else {
+                new_loser_rating = 100; // Minimum rating floor
+            }
+
+            self.storage.elo_ratings.at(winner).write(new_winner_rating);
+            self.storage.elo_ratings.at(loser).write(new_loser_rating);
+        }
     }
 
     #[external("private")]
@@ -237,11 +311,16 @@ pub contract FogOfWarChess {
 
         let ending_hash = move_hashes.output_game_state;
 
+        // Check if black captured white's king (game ends)
+        let target_piece = user_state.game_state[(move_data.x2 + move_data.y2 * 8) as u32];
+        let game_ended = (target_piece.id == Pieces::KING) & (target_piece.player_id == 0);
+
         self.enqueue_self.make_move_black_public(
             game_id,
             state_hash,
             ending_hash,
             user_output_state,
+            game_ended,
         );
     }
 
@@ -252,6 +331,7 @@ pub contract FogOfWarChess {
         initial_hash: Field,
         final_hash: Field,
         state: UserOutputState<64, 2>,
+        game_ended: bool,
     ) {
         let game_hash = self.storage.game_hashes.at(game_id).read();
 
@@ -261,6 +341,46 @@ pub contract FogOfWarChess {
 
         self.storage.game_hashes.at(game_id).write(final_hash);
         self.emit(MoveEvent { state });
+
+        // If black won (captured white's king), update ELO ratings
+        if game_ended {
+            let players: [AztecAddress; 2] = self.storage.game_players.at(game_id).read();
+            let winner = players[1]; // black won
+            let loser = players[0];  // white lost
+
+            // Get current ratings (use default if not set)
+            let mut winner_rating = self.storage.elo_ratings.at(winner).read();
+            let mut loser_rating = self.storage.elo_ratings.at(loser).read();
+            if winner_rating == 0 {
+                winner_rating = DEFAULT_ELO;
+            }
+            if loser_rating == 0 {
+                loser_rating = DEFAULT_ELO;
+            }
+
+            // Calculate rating change using simplified ELO
+            let rating_diff: i32 = loser_rating as i32 - winner_rating as i32;
+            let mut expected_x100: i32 = 50 + rating_diff / 8;
+            if expected_x100 < 5 {
+                expected_x100 = 5;
+            }
+            if expected_x100 > 95 {
+                expected_x100 = 95;
+            }
+            let rating_change: u32 = (ELO_K_FACTOR * (100 - expected_x100 as u32)) / 100;
+
+            // Update ratings
+            let new_winner_rating = winner_rating + rating_change;
+            let mut new_loser_rating = loser_rating;
+            if loser_rating > rating_change {
+                new_loser_rating = loser_rating - rating_change;
+            } else {
+                new_loser_rating = 100; // Minimum rating floor
+            }
+
+            self.storage.elo_ratings.at(winner).write(new_winner_rating);
+            self.storage.elo_ratings.at(loser).write(new_loser_rating);
+        }
     }
 
     #[external("private")]
@@ -280,6 +400,7 @@ pub contract FogOfWarChess {
             password_hash = 0;
         }
         let game_hash = game_state.hash();
+        let black_player = self.context.msg_sender().unwrap();
         self.enqueue_self.join_game_public(
             game_id,
             game_hash,
@@ -288,6 +409,7 @@ pub contract FogOfWarChess {
                 game_state.mpc_state.user_mask_secret_hashes[1],
             ],
             password_hash,
+            black_player,
         );
     }
 
@@ -298,6 +420,7 @@ pub contract FogOfWarChess {
         game_hash: Field,
         user_secret_hashes: [Field; 2],
         password_hash: Field,
+        black_player: AztecAddress,
     ) {
         let secret_hashes: [Field; 4] = self.storage.game_secret_hashes.at(game_id).read();
         assert(secret_hashes[0] != 0);
@@ -311,6 +434,10 @@ pub contract FogOfWarChess {
             user_secret_hashes[0],
             user_secret_hashes[1],
         ]);
+
+        // Store black player address
+        let players = self.storage.game_players.at(game_id).read();
+        self.storage.game_players.at(game_id).write([players[0], black_player]);
 
         self.storage.game_hashes.at(game_id).write(game_hash);
         self.emit(JoinedGame { game_id, password_hash, initial_state: user_secret_hashes });
