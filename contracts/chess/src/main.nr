@@ -2,10 +2,10 @@ use aztec::macros::aztec;
 
 #[aztec]
 pub contract FogOfWarChess {
+    use protocol_types::address::AztecAddress;
     use aztec::{
         macros::{events::event, functions::{external, initializer, only_self}, storage::storage},
-        protocol_types::address::AztecAddress,
-        state_vars::{Map, public_mutable::PublicMutable},
+        state_vars::{Map, PublicMutable},
     };
     use fog_of_war_chess::{
         consume_opponent_move_and_update_game_state as consume_opponent_move_and_update_game_state_inner,
@@ -198,7 +198,7 @@ pub contract FogOfWarChess {
         if (password == 0) {
             password_hash = 0;
         }
-        let black_player = self.context.msg_sender().unwrap();
+        let black_player = self.msg_sender();
         self.enqueue_self.create_game_public(
             [
                 game_state.mpc_state.user_encrypt_secret_hashes[1],
@@ -431,7 +431,7 @@ pub contract FogOfWarChess {
             password_hash = 0;
         }
         let game_hash = game_state.hash();
-        let white_player = self.context.msg_sender().unwrap();
+        let white_player = self.msg_sender();
         self.enqueue_self.join_game_public(
             game_id,
             game_hash,

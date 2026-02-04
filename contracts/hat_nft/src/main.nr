@@ -68,10 +68,10 @@ pub fn compute_hat_quality(winner_elo: u32) -> u8 {
 
 #[aztec]
 pub contract HatNFT {
+    use protocol_types::address::AztecAddress;
     use aztec::{
         macros::{events::event, functions::{external, initializer}, storage::storage},
-        protocol_types::address::AztecAddress,
-        state_vars::{Map, public_mutable::PublicMutable},
+        state_vars::{Map, PublicMutable},
     };
     use crate::{compute_hat_type, compute_hat_quality};
 
@@ -124,7 +124,7 @@ pub contract HatNFT {
     fn mint_hat(to: AztecAddress, game_id: u32, winner_elo: u32, loser_elo: u32) {
         // Only the authorized minter can call this
         let minter = self.storage.minter.read();
-        let caller = self.context.msg_sender().expect(f"msg_sender must be set");
+        let caller = self.msg_sender();
         assert(caller == minter, "Only minter can mint");
         assert(to != AztecAddress::zero(), "Cannot mint to zero address");
 
@@ -165,7 +165,7 @@ pub contract HatNFT {
         // Check caller is the owner
         let owner = self.storage.public_owners.at(token_id).read();
         assert(owner == from, "From address is not the owner");
-        let caller = self.context.msg_sender().expect(f"msg_sender must be set");
+        let caller = self.msg_sender();
         assert(caller == from, "Only owner can transfer");
         assert(to != AztecAddress::zero(), "Cannot transfer to zero address");
 
